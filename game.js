@@ -29,9 +29,11 @@ canvas.width = W; canvas.height = H;
 
 // ---------- 输入 ----------
 const keys = {};
+let firingEnabled = true;
 window.addEventListener('keydown', e => {
     keys[e.key] = true;
     if (e.key === 'Escape') togglePause();
+    if (e.key === 'f' || e.key === 'F') firingEnabled = !firingEnabled;
     if (!['F5','F11','F12'].includes(e.key)) e.preventDefault();
 });
 window.addEventListener('keyup', e => { keys[e.key] = false; });
@@ -134,7 +136,7 @@ const player = {
         this.y = Math.max(0, Math.min(H - this.h, this.y));
         if (this.invincible > 0) this.invincible--;
         this.fireCd++;
-        if (this.fireCd >= this.fireRate) {
+        if (firingEnabled && this.fireCd >= this.fireRate) {
             this.fireCd = 0;
             spawnPlayerBullet();
         }
@@ -869,9 +871,10 @@ function drawHUD() {
     ctx.fillStyle = '#aaffff'; ctx.font = '12px Arial'; ctx.textAlign = 'right';
     ctx.fillText(`Wave ${wave}`, W - 10, H - 18);
 
-    // 分数
-    ctx.fillStyle = '#ffffff'; ctx.font = 'bold 14px Arial'; ctx.textAlign = 'left';
-    ctx.fillText(`Score: ${score}`, 10, 28);
+    // 开火状态（F键切换）
+    ctx.textAlign = 'left'; ctx.font = 'bold 11px Arial';
+    ctx.fillStyle = firingEnabled ? '#00ff88' : '#ff4444';
+    ctx.fillText(firingEnabled ? '● FIRE ON  [F]' : '○ FIRE OFF [F]', 10, 28);
 
     // HP
     ctx.textAlign = 'right';

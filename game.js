@@ -928,18 +928,13 @@ function update() {
         if (!hit && snakeBoss && snakeBoss.alive) {
             for (const t of snakeBoss.getHitTargets()) {
                 if (circleRect(b.x, b.y, b.r, t.x, t.y, t.w, t.h)) {
-                    spawnHitFlash(b.x, b.y, t.type === 'head' ? '#ff88aa' : '#ffffff');
-                    if (t.type === 'head') {
-                        spawnExplosion(t.x+t.w/2, t.y+t.h/2, 3, '#ff0080');
-                    } else {
-                        const dmg = isRadarBurst ? 2 : 1;
-                        t.seg.hp -= dmg;
-                        spawnExplosion(t.x+t.w/2, t.y+t.h/2, 3, '#ff6600');
-                        if (t.seg.hp <= 0) {
-                            score += t.seg.maxHp * 5;
-                            addPressure(10);
-                            snakeBoss.killSegment(t.seg.index);
-                        }
+                    spawnHitFlash(b.x, b.y, '#ff88cc');
+                    const dmg = isRadarBurst ? 2 : 1;
+                    const segDead = snakeBoss.hit(t.segIdx, dmg);
+                    spawnExplosion(t.x+t.w/2, t.y+t.h/2, segDead ? 12 : 3, '#ff6600');
+                    if (segDead) {
+                        score += SEG_HP[t.segIdx] * 5;
+                        addPressure(10);
                     }
                     hit = true; break;
                 }
@@ -971,7 +966,7 @@ function update() {
 
     // 蛇Boss体积 vs 玩家
     if (snakeBoss && snakeBoss.alive) {
-        for (const t of snakeBoss.getBodyCollisionTargets()) {
+        for (const t of snakeBoss.getHitTargets()) {
             if (rectsOverlap(player.x+6, player.y+6, player.w-12, player.h-12, t.x, t.y, t.w, t.h)) {
                 player.hit(15);
                 spawnExplosion(t.x+t.w/2, t.y+t.h/2, 8, '#ff0080');

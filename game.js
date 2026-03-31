@@ -408,21 +408,18 @@ class SnakeBoss {
         }
 
         if (this.mode === 'forward') {
-            // 头部前进，所有存活球 trailIdx+1（保持与头的相对距离）
+            // 头部前进，trail 每帧 push 增长
+            // 球 trailIdx 不变 → trail.length-1-trailIdx 自动+1 → 取到更新坐标 = 跟头走
             if (this.headIdx < maxIdx) this.headIdx++;
-            for (const seg of this.segments) {
-                if (seg.dead) continue;
-                for (const ball of seg.balls) ball.trailIdx++;
-            }
         } else {
             // 头部后退
-            // breakPoint 前的球：trailIdx 不变 → trail 增长后取到更旧坐标 = 跟头一起退
-            // breakPoint 及之后的球：trailIdx+1 → 抵消 trail 增长 = 坐标冻结
+            // breakPoint 前的球：trailIdx+1 → 抵消 trail 增长 = 坐标冻结（等待）
+            // breakPoint 及之后的球：trailIdx 不变 → trail 增长取到更旧坐标 = 跟头一起退
             this.headIdx = Math.max(0, this.headIdx - this.retreatSpeed);
             for (const seg of this.segments) {
                 if (seg.dead) continue;
                 for (const ball of seg.balls) {
-                    if (seg.index >= this.breakPoint) ball.trailIdx++;
+                    if (seg.index < this.breakPoint) ball.trailIdx++;
                 }
             }
         }

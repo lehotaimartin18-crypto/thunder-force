@@ -688,7 +688,7 @@ function spawnWave() {
             for (let col = 0; col < count; col++) {
                 const totalW = (count - 1) * colSpacing;
                 const x = (W - totalW) / 2 + col * colSpacing - 28;
-                const y = -60 - rowIdx * 80;
+                const y = -60 - (rows.length - 1 - rowIdx) * 80;
                 const type = rowIdx >= 2 ? 'elite' : 'normal';
                 const e = new Enemy(x, y, type);
                 e.update = function() {

@@ -299,66 +299,70 @@ class Enemy {
 // ============================================================
 
 
+// ============================================================
+// 蛇形Boss - 纯路径索引驱动 + 双索引断节后退
+// ============================================================
+
 const SEG_COUNT     = 7;
 const SEG_HP        = [10, 20, 30, 40, 50, 60, 70];
 const BALLS_PER_SEG = 5;
 const BALL_R        = 18;
-const BALL_SPACING  = BALL_R * 2;  // 36，球边缘相接
+const BALL_SPACING  = 22;  // 路径步数间距，让球边缘相接
 
 class SnakeBoss {
     constructor() {
         this.path    = this._buildPath();
         this.pathLen = this.path.length;
-        this.headIdx = 0;
 
-        // trail：push追加，trail[0]=最旧，trail[length-1]=最新
-        // trailIdx=0 取最新，trailIdx越大取越旧的坐标
-        this.trail = [];
+        // 头部路径索引，从足够大的位置开始保证所有球都有有效坐标
+        const totalBalls = SEG_COUNT * BALLS_PER_SEG + 1;
+        this.headIdx = totalBalls * BALL_SPACING;
 
-        this.speed       = 6;
-        this.normalSpeed = 2.2;
-        this.entryDone   = false;
+        // 入场加速：入场阶段每帧走3步，到达屏幕内后走1步
+        this.entryDone = false;
 
-        this.headBall = { x: -999, y: -999 };
-
+        // 节结构
         this.segments = [];
         for (let s = 0; s < SEG_COUNT; s++) {
             const balls = [];
             for (let u = 0; u < BALLS_PER_SEG; u++) {
-                const globalId = s * BALLS_PER_SEG + u + 1;
-                balls.push({ trailIdx: globalId * BALL_SPACING, x: -999, y: -999 });
+                const globalId = s * BALLS_PER_SEG + u + 1; // 1~35
+                balls.push({
+                    globalId,
+                    pathOffset: globalId * BALL_SPACING,  // 固定偏移，永不改变
+                    x: -999, y: -999
+                });
             }
             this.segments.push({
-                index: s, hp: SEG_HP[s], maxHp: SEG_HP[s], dead: false, balls
+                index: s,
+                hp: SEG_HP[s], maxHp: SEG_HP[s],
+                dead: false,
+                balls
             });
         }
 
         // 后退状态
-        this.mode        = 'forward';
-        this.breakPoint  = -1;   // 死亡节的 index
-        this.retreatSpeed = 2;
+        this.mode      = 'forward';
+        this.frontIdx  = 0;   // 前半段独立索引（retreating时用）
+        this.rearIdx   = 0;   // 后半段独立索引（retreating时冻结）
+        this.breakPoint = -1; // 死亡节index
 
         this.alive = true;
         this.t     = 0;
-
-        // 预填充 trail，保证初始时所有球都有坐标
-        const startPt = this.path[0];
-        const need = SEG_COUNT * BALLS_PER_SEG * BALL_SPACING + 100;
-        for (let i = 0; i < need; i++) this.trail.push({ x: startPt.x, y: startPt.y });
     }
 
     _buildPath() {
         const pts = [];
         const leftX = 60, rightX = W - 60;
-        const laneStep = 90, spd = 2.2;
+        const laneStep = 90, spd = 1;  // spd=1 保证路径点密集，索引差=像素距离
         const r = laneStep / 2;
         const arcSteps = Math.ceil(Math.PI * r / spd);
-        let x = W / 2, y = -120, dir = 1;
-        const totalLanes = Math.ceil((H + 600) / laneStep) + 4;
+        let x = W / 2, y = -200, dir = 1;
+        const totalLanes = Math.ceil((H + 800) / laneStep) + 4;
         for (let lane = 0; lane < totalLanes; lane++) {
             const arcCX = dir === 1 ? rightX - r : leftX + r;
             const arcCY = y + r;
-            while (dir === 1 ? x < arcCX - 0.1 : x > arcCX + 0.1) {
+            while (dir === 1 ? x < arcCX - 0.5 : x > arcCX + 0.5) {
                 x += dir * spd;
                 x = dir === 1 ? Math.min(x, arcCX) : Math.max(x, arcCX);
                 pts.push({ x, y });
@@ -373,10 +377,9 @@ class SnakeBoss {
         return pts;
     }
 
-    // trailIdx=0 → 最新坐标（trail末尾），trailIdx越大越旧
-    _trailPt(idx) {
-        const pos = this.trail.length - 1 - Math.min(idx, this.trail.length - 1);
-        return this.trail[Math.max(0, pos)];
+    _ptAt(idx) {
+        const i = Math.max(0, Math.min(idx, this.pathLen - 1));
+        return this.path[i];
     }
 
     _firstAliveAfter(idx) {
@@ -385,105 +388,111 @@ class SnakeBoss {
         return null;
     }
 
+    _firstAliveBefore(idx) {
+        for (let i = idx - 1; i >= 0; i--)
+            if (!this.segments[i].dead) return this.segments[i];
+        return null;
+    }
+
     update() {
         this.t++;
-        const maxIdx = this.pathLen - 1;
-
-        // 入场减速
-        if (!this.entryDone) {
-            const pt = this.path[this.headIdx];
-            if (pt && pt.y >= 150) {
-                this.speed = Math.max(this.normalSpeed, this.speed * 0.94);
-                if (this.speed <= this.normalSpeed + 0.05) { this.speed = this.normalSpeed; this.entryDone = true; }
-            }
-        }
 
         if (this.mode === 'forward') {
-            // 头部前进，trail 每帧 push 增长
-            // 球 trailIdx 不变 → trail.length-1-trailIdx 自动+1 → 取到更新坐标 = 跟头走
-            if (this.headIdx < maxIdx) this.headIdx++;
-        } else {
-            // 头部后退
-            // breakPoint 前的球：trailIdx+1 → 抵消 trail 增长 = 坐标冻结（等待）
-            // breakPoint 及之后的球：trailIdx 不变 → trail 增长取到更旧坐标 = 跟头一起退
-            this.headIdx = Math.max(0, this.headIdx - this.retreatSpeed);
+            // 入场阶段每帧走3步，头部 y >= 150 后走1步
+            const step = (!this.entryDone) ? 3 : 1;
+            this.headIdx += step;
+            const headPt = this._ptAt(this.headIdx);
+            if (!this.entryDone && headPt.y >= 150) this.entryDone = true;
+
+            // 所有存活球坐标 = path[headIdx - pathOffset]
             for (const seg of this.segments) {
                 if (seg.dead) continue;
                 for (const ball of seg.balls) {
-                    if (seg.index < this.breakPoint) ball.trailIdx++;
+                    const pt = this._ptAt(this.headIdx - ball.pathOffset);
+                    ball.x = pt.x; ball.y = pt.y;
                 }
             }
-        }
 
-        // 追加头部新坐标到 trail
-        const headPt = this.path[Math.min(this.headIdx, maxIdx)];
-        this.trail.push({ x: headPt.x, y: headPt.y });
-        this.headBall.x = headPt.x;
-        this.headBall.y = headPt.y;
+        } else {
+            // retreating：前半段后退，后半段冻结
+            this.frontIdx -= 1;
 
-        // 更新所有存活球坐标
-        for (const seg of this.segments) {
-            if (seg.dead) continue;
-            for (const ball of seg.balls) {
-                const pt = this._trailPt(ball.trailIdx);
-                if (pt) { ball.x = pt.x; ball.y = pt.y; }
-            }
-        }
-
-        // retreating：检查是否接上
-        if (this.mode === 'retreating') {
-            // 找 breakPoint 前最后一个存活节的最后一个球
-            let frontLastBall = this.headBall;
-            for (let i = this.breakPoint - 1; i >= 0; i--) {
-                if (!this.segments[i].dead) {
-                    frontLastBall = this.segments[i].balls[BALLS_PER_SEG - 1];
-                    break;
+            // 前半段（breakPoint 前的存活节）
+            for (const seg of this.segments) {
+                if (seg.dead || seg.index >= this.breakPoint) continue;
+                for (const ball of seg.balls) {
+                    const pt = this._ptAt(this.frontIdx - ball.pathOffset);
+                    ball.x = pt.x; ball.y = pt.y;
                 }
             }
-            const targetSeg = this._firstAliveAfter(this.breakPoint);
-            if (!targetSeg) {
+            // 后半段（breakPoint 后的存活节）坐标不更新，保持冻结
+
+            // 接合判定
+            const rearSeg = this._firstAliveAfter(this.breakPoint - 1);
+            if (!rearSeg) {
+                // 后面没有存活节，直接切回 forward
+                this.headIdx = this.frontIdx;
                 this.mode = 'forward'; this.breakPoint = -1;
             } else {
-                const tb = targetSeg.balls[0];
-                if (tb.x > -900) {
-                    const dx = frontLastBall.x - tb.x, dy = frontLastBall.y - tb.y;
-                    if (Math.sqrt(dx*dx + dy*dy) <= BALL_SPACING + 4) {
-                        this._recalcTrailDists();
-                        this.mode = 'forward'; this.breakPoint = -1;
-                    }
+                // 前半段最后一个存活节的最后一个球
+                const frontSeg = this._firstAliveBefore(this.breakPoint);
+                const frontLastBall = frontSeg
+                    ? frontSeg.balls[BALLS_PER_SEG - 1]
+                    : { x: this._ptAt(this.frontIdx).x, y: this._ptAt(this.frontIdx).y };
+                const rearFirstBall = rearSeg.balls[0];
+
+                // 用路径索引差判断是否接上
+                const frontLastIdx = this.frontIdx - (frontSeg ? frontSeg.balls[BALLS_PER_SEG-1].pathOffset : 0);
+                const rearFirstIdx = this.rearIdx - rearSeg.balls[0].pathOffset;
+                if (frontLastIdx >= rearFirstIdx - BALL_SPACING - 1) {
+                    // 接上，重新统一 headIdx，切回 forward
+                    this.headIdx = this.frontIdx;
+                    this._recalcOffsets();
+                    this.mode = 'forward'; this.breakPoint = -1;
                 }
             }
         }
 
         // 头部射击
-        if (this.t % 50 === 0 && headPt.y > -20) {
+        const headPt = this._ptAt(this.headIdx);
+        if (this.t % 50 === 0 && headPt.y > -20 && headPt.y < H + 20) {
             enemyBullets.push({ x: headPt.x-8, y: headPt.y, vx: -0.5, vy: 4, r: 4, color: '#ff5555' });
             enemyBullets.push({ x: headPt.x,   y: headPt.y, vx: 0,    vy: 4, r: 4, color: '#ff5555' });
             enemyBullets.push({ x: headPt.x+8, y: headPt.y, vx: 0.5,  vy: 4, r: 4, color: '#ff5555' });
         }
 
+        // 存活判定
         if (!this.segments.some(s => !s.dead)) { this.alive = false; return; }
-        if (headPt.y > H + 350) this.alive = false;
+        if (headPt.y > H + 400) this.alive = false;
     }
 
-    _recalcTrailDists() {
-        let dist = BALL_SPACING;
+    // 接合后重新分配所有存活球的 pathOffset（连续紧密排列）
+    _recalcOffsets() {
+        let offset = BALL_SPACING;
         for (const seg of this.segments) {
             if (seg.dead) continue;
-            for (const ball of seg.balls) { ball.trailIdx = dist; dist += BALL_SPACING; }
+            for (const ball of seg.balls) {
+                ball.pathOffset = offset;
+                offset += BALL_SPACING;
+            }
         }
     }
 
     segKill(segIdx) {
         const seg = this.segments[segIdx];
-        if (seg.dead) return;
+        if (!seg || seg.dead) return;
         seg.dead = true;
         for (const ball of seg.balls)
             if (ball.x > -900) spawnExplosion(ball.x, ball.y, 8, `hsl(${segIdx*25},100%,60%)`, 1.2);
+
         const nextAlive = this._firstAliveAfter(segIdx);
-        if (!nextAlive) return;
-        this.mode = 'retreating';
+        if (!nextAlive) return; // 末尾节，不触发后退
+
+        // 触发后退
+        this.mode       = 'retreating';
         this.breakPoint = segIdx;
+        this.frontIdx   = this.headIdx;
+        this.rearIdx    = this.headIdx; // 后半段冻结在当前位置
     }
 
     hit(segIdx, dmg) {
@@ -495,6 +504,9 @@ class SnakeBoss {
     }
 
     draw() {
+        const headPt = this._ptAt(this.headIdx);
+
+        // 从尾到头绘制
         for (let s = SEG_COUNT - 1; s >= 0; s--) {
             const seg = this.segments[s];
             if (seg.dead) continue;
@@ -508,6 +520,7 @@ class SnakeBoss {
                 ctx.strokeStyle = `hsl(${hue},100%,70%)`; ctx.lineWidth = 1.5; ctx.stroke();
                 ctx.restore();
             }
+            // 血量数字
             const mid = seg.balls[2];
             if (mid && mid.x > -900) {
                 ctx.save();
@@ -518,19 +531,19 @@ class SnakeBoss {
                 ctx.restore();
             }
         }
+
         // 头部
-        const hp = this.headBall;
-        if (hp.y > -80 && hp.y < H + 80) {
+        if (headPt.y > -80 && headPt.y < H + 80) {
             ctx.save();
             ctx.shadowColor = '#ff0080'; ctx.shadowBlur = 20;
             ctx.fillStyle = '#cc0066';
-            ctx.beginPath(); ctx.arc(hp.x, hp.y, BALL_R + 2, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.arc(headPt.x, headPt.y, BALL_R + 2, 0, Math.PI*2); ctx.fill();
             ctx.fillStyle = '#fff';
-            ctx.beginPath(); ctx.arc(hp.x-7, hp.y-4, 4, 0, Math.PI*2); ctx.fill();
-            ctx.beginPath(); ctx.arc(hp.x+7, hp.y-4, 4, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.arc(headPt.x-7, headPt.y-4, 4, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.arc(headPt.x+7, headPt.y-4, 4, 0, Math.PI*2); ctx.fill();
             ctx.fillStyle = '#000';
-            ctx.beginPath(); ctx.arc(hp.x-7, hp.y-4, 2, 0, Math.PI*2); ctx.fill();
-            ctx.beginPath(); ctx.arc(hp.x+7, hp.y-4, 2, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.arc(headPt.x-7, headPt.y-4, 2, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.arc(headPt.x+7, headPt.y-4, 2, 0, Math.PI*2); ctx.fill();
             ctx.restore();
         }
     }
@@ -547,6 +560,7 @@ class SnakeBoss {
         return list;
     }
 }
+
 let snakeBoss = null;
 
 

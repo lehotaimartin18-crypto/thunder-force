@@ -251,8 +251,8 @@ class Enemy {
         if (this.type === 'elite') this.x += Math.sin(this.t * 0.05) * 2;
         else this.x += Math.sin(this.t * 0.04 + this.x) * 1.5;
         this.y += this.vy;
-        this.fireCd++;
-        if (this.fireCd >= this.fireRate) { this.fireCd = 0; this.fire(); }
+        // this.fireCd++;
+        // if (this.fireCd >= this.fireRate) { this.fireCd = 0; this.fire(); }
     }
     fire() {
         const cx = this.x + this.w/2, cy = this.y + this.h;
@@ -455,11 +455,11 @@ class SnakeBoss {
 
         // 头部射击
         const headPt = this._ptAt(this.headIdx);
-        if (this.t % 50 === 0 && headPt.y > -20 && headPt.y < H + 20) {
-            enemyBullets.push({ x: headPt.x-8, y: headPt.y, vx: -0.5, vy: 4, r: 4, color: '#ff5555' });
-            enemyBullets.push({ x: headPt.x,   y: headPt.y, vx: 0,    vy: 4, r: 4, color: '#ff5555' });
-            enemyBullets.push({ x: headPt.x+8, y: headPt.y, vx: 0.5,  vy: 4, r: 4, color: '#ff5555' });
-        }
+        // if (this.t % 50 === 0 && headPt.y > -20 && headPt.y < H + 20) {
+        //     enemyBullets.push({ x: headPt.x-8, y: headPt.y, vx: -0.5, vy: 4, r: 4, color: '#ff5555' });
+        //     enemyBullets.push({ x: headPt.x,   y: headPt.y, vx: 0,    vy: 4, r: 4, color: '#ff5555' });
+        //     enemyBullets.push({ x: headPt.x+8, y: headPt.y, vx: 0.5,  vy: 4, r: 4, color: '#ff5555' });
+        // }
 
         // 存活判定
         if (!this.segments.some(s => !s.dead)) { this.alive = false; return; }
@@ -694,8 +694,8 @@ function spawnWave() {
                 e.update = function() {
                     this.t++;
                     this.y += 1.8;
-                    this.fireCd++;
-                    if (this.fireCd >= this.fireRate) { this.fireCd = 0; this.fire(); }
+                    // this.fireCd++;
+                    // if (this.fireCd >= this.fireRate) { this.fireCd = 0; this.fire(); }
                 };
                 waveSpawnQueue.push({ delay: rowIdx * 20, enemy: e });
             }

@@ -354,6 +354,13 @@ class SnakeBoss {
 
         this.alive = true;
         this.t     = 0;
+
+        // 预填充 trail：用路径起始坐标填满，保证球一出场就有坐标
+        const needTrail = (SEG_COUNT * BALLS_PER_SEG + 2) * BALL_SPACING + 10;
+        const startPt = this.path[0];
+        for (let i = 0; i < needTrail; i++) {
+            this.trail.push({ x: startPt.x, y: startPt.y });
+        }
     }
 
     _buildPath() {

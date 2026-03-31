@@ -307,7 +307,7 @@ const SEG_COUNT     = 7;
 const SEG_HP        = [10, 20, 30, 40, 50, 60, 70];
 const BALLS_PER_SEG = 5;
 const BALL_R        = 18;
-const BALL_SPACING  = 22;  // 路径步数间距，让球边缘相接
+const BALL_SPACING  = 34;  // 路径步数间距 = 球直径，让球边缘相接
 
 class SnakeBoss {
     constructor() {
